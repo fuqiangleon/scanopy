@@ -172,7 +172,12 @@
 	<!-- Header -->
 	<TabHeader title={discovery_historyTitle()} />
 
-	{#if !hasDaemon(onboarding)}
+	{#if organizationQuery.isPending}
+		<!-- org(含 onboarding)未加载完前先 loading,避免闪「装 daemon」空状态。 -->
+		<div class="flex min-h-[60vh] items-center justify-center">
+			<Loading />
+		</div>
+	{:else if !hasDaemon(onboarding)}
 		<PreDaemonEmptyState title="Install a daemon to start running discoveries on your network." />
 	{:else if isLoading}
 		<Loading />
