@@ -48,6 +48,15 @@ pub struct ScanSettings {
     /// Lower values scan more IPs — increase arp_rate_pps accordingly.
     #[serde(default)]
     pub arp_scan_cutoff: Option<u8>,
+
+    /// After a routed (non-interfaced) host fails the TCP responsiveness gate,
+    /// probe it once with the configured SNMP credentials; a reply counts as
+    /// alive and the host proceeds to a deep scan (default: false).
+    /// For network gear (firewalls etc.) that drops TCP but answers SNMP/ICMP.
+    /// Enabling adds one SNMP timeout per TCP-silent routed IP — turn on only
+    /// when scanning network-device subnets.
+    #[serde(default)]
+    pub snmp_liveness_fallback: bool,
 }
 
 pub mod defaults {
@@ -116,6 +125,11 @@ impl ScanSettings {
                 self.use_npcap_arp,
             ),
             (
+                "SNMP liveness fallback:",
+                self.snmp_liveness_fallback.to_string(),
+                self.snmp_liveness_fallback,
+            ),
+            (
                 "Full scan interval:",
                 format!(
                     "every {} scans",
@@ -171,6 +185,7 @@ impl ScanSettings {
             full_scan_interval: _,
             is_full_scan: _, // Server-set, not a UI field
             arp_scan_cutoff: _,
+            snmp_liveness_fallback: _,
         } = Self::default();
 
         vec![
@@ -280,6 +295,20 @@ impl ScanSettings {
                 ),
                 options: None,
                 default_value: Some("3"),
+                category: Some("Detection"),
+            },
+            FieldDefinition {
+                id: "snmp_liveness_fallback",
+                label: "SNMP Liveness Fallback",
+                field_type: FieldType::Boolean,
+                placeholder: None,
+                secret: false,
+                optional: false,
+                help_text: Some(
+                    "For routed hosts with no open TCP ports, probe SNMP before skipping. Lets network gear (firewalls) that answers SNMP but not TCP be scanned. Adds one SNMP timeout per TCP-silent routed host.",
+                ),
+                options: None,
+                default_value: Some("false"),
                 category: Some("Detection"),
             },
         ]

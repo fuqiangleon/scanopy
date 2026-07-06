@@ -5,8 +5,11 @@ use crate::daemon::discovery::types::base::DiscoveryCriticalError;
 use crate::daemon::utils::base::{DaemonUtils, PlatformDaemonUtils};
 use crate::daemon::utils::scanner::{
     ScanConcurrencyController, can_arp_scan, scan_endpoints, scan_tcp_ports, scan_udp_ports,
+    try_snmp_with_credential_on_port,
 };
-use crate::server::credentials::r#impl::mapping::CredentialQueryPayloadDiscriminants;
+use crate::server::credentials::r#impl::mapping::{
+    CredentialMapping, CredentialQueryPayload, CredentialQueryPayloadDiscriminants,
+};
 use crate::server::discovery::r#impl::scan_settings::defaults;
 use crate::server::ip_addresses::r#impl::base::{IPAddress, IPAddressBase};
 use crate::server::ports::r#impl::base::PortType;
@@ -554,6 +557,7 @@ impl NetworkScan {
                                     total_cost.fetch_add(scan_cost_cs + integration_cost, Ordering::Relaxed);
                                 }
                                 let probe_raw_socket_ports = self.scan_settings.probe_raw_socket_ports;
+                                let snmp_liveness_fallback = self.scan_settings.snmp_liveness_fallback;
                                 let light_scan_ports = self.light_scan_ports.clone();
                                 let all_subnets_ref = all_subnets.clone();
                                 let early_host_handle = early_reported_hosts.remove(&ip);
@@ -582,6 +586,7 @@ impl NetworkScan {
                                             scan_cost_cs,
                                             scan_controller,
                                             probe_raw_socket_ports,
+                                            snmp_liveness_fallback,
                                             early_host_id,
                                             is_full_scan,
                                             light_scan_ports: &light_scan_ports,
@@ -665,6 +670,7 @@ impl NetworkScan {
                         let hosts_discovered = hosts_discovered.clone();
                         let scan_controller = scan_controller.clone();
                         let probe_raw_socket_ports = self.scan_settings.probe_raw_socket_ports;
+                        let snmp_liveness_fallback = self.scan_settings.snmp_liveness_fallback;
                         let light_scan_ports = self.light_scan_ports.clone();
                         let all_subnets_ref = all_subnets.clone();
                         let early_host_handle = early_reported_hosts.remove(&ip);
@@ -694,6 +700,7 @@ impl NetworkScan {
                                     scan_cost_cs,
                                     scan_controller,
                                     probe_raw_socket_ports,
+                                    snmp_liveness_fallback,
                                     early_host_id,
                                     is_full_scan,
                                     light_scan_ports: &light_scan_ports,
@@ -864,6 +871,7 @@ impl NetworkScan {
             scan_cost_cs,
             scan_controller,
             probe_raw_socket_ports,
+            snmp_liveness_fallback,
             early_host_id,
             is_full_scan,
             light_scan_ports,
@@ -905,8 +913,15 @@ impl NetworkScan {
             .await?;
 
             if responsive_ports.is_empty() {
-                tracing::debug!(ip = %ip, "Host unresponsive, skipping deep scan");
-                return Ok(None);
+                // TCP silent. Network gear (firewalls) commonly drops TCP but answers
+                // SNMP — probe it before giving up so it can still be deep-scanned.
+                let alive_via_snmp = snmp_liveness_fallback
+                    && snmp_liveness_probe(ip, credential_mappings).await;
+                if !alive_via_snmp {
+                    tracing::debug!(ip = %ip, "Host unresponsive, skipping deep scan");
+                    return Ok(None);
+                }
+                tracing::debug!(ip = %ip, "Host responsive via SNMP fallback (TCP silent)");
             }
 
             // Host is responsive - NOW we count it in hosts_discovered and total_cost
@@ -1213,4 +1228,22 @@ impl NetworkScan {
 
         Ok(None)
     }
+}
+
+/// TCP-silent routed hosts (firewalls etc.) often still answer SNMP. Probe the
+/// IP with each configured SNMP credential; a single reply means alive.
+/// Returns false when no SNMP credential applies to the IP (no extra probing).
+async fn snmp_liveness_probe(
+    ip: IpAddr,
+    credential_mappings: &[CredentialMapping<CredentialQueryPayload>],
+) -> bool {
+    const SNMP_PORT: u16 = 161;
+    for mapping in credential_mappings {
+        if let Some(CredentialQueryPayload::Snmp(cred)) = mapping.get_credential_for_ip(&ip) {
+            if let Ok(Some(_)) = try_snmp_with_credential_on_port(ip, cred, SNMP_PORT).await {
+                return true;
+            }
+        }
+    }
+    false
 }

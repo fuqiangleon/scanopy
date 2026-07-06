@@ -140,6 +140,7 @@ pub(super) struct DeepScanParams<'a> {
     scan_cost_cs: usize,
     scan_controller: Arc<ScanConcurrencyController>,
     probe_raw_socket_ports: bool,
+    snmp_liveness_fallback: bool,
     early_host_id: Uuid,
     is_full_scan: bool,
     light_scan_ports: &'a HashSet<u16>,
