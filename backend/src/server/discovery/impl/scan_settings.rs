@@ -51,11 +51,13 @@ pub struct ScanSettings {
 
     /// After a routed (non-interfaced) host fails the TCP responsiveness gate,
     /// probe it once with the configured SNMP credentials; a reply counts as
-    /// alive and the host proceeds to a deep scan (default: false).
+    /// alive and the host proceeds to a deep scan (default: true).
     /// For network gear (firewalls etc.) that drops TCP but answers SNMP/ICMP.
-    /// Enabling adds one SNMP timeout per TCP-silent routed IP — turn on only
-    /// when scanning network-device subnets.
-    #[serde(default)]
+    /// Costs one SNMP timeout per TCP-silent routed IP, but only on networks
+    /// that actually have SNMP credentials configured (no creds = no probe).
+    /// A missing field deserializes to true so daemons keep this on even when
+    /// paired with an older server that doesn't send the field.
+    #[serde(default = "defaults::snmp_liveness_fallback")]
     pub snmp_liveness_fallback: bool,
 }
 
@@ -77,6 +79,9 @@ pub mod defaults {
     }
     pub fn arp_scan_cutoff() -> u8 {
         15
+    }
+    pub fn snmp_liveness_fallback() -> bool {
+        true
     }
 }
 
@@ -308,7 +313,7 @@ impl ScanSettings {
                     "For routed hosts with no open TCP ports, probe SNMP before skipping. Lets network gear (firewalls) that answers SNMP but not TCP be scanned. Adds one SNMP timeout per TCP-silent routed host.",
                 ),
                 options: None,
-                default_value: Some("false"),
+                default_value: Some("true"),
                 category: Some("Detection"),
             },
         ]
