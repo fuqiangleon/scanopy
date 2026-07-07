@@ -1,6 +1,46 @@
-FROM debian:bookworm-slim
+# ============================================
+# Scanopy Daemon — 自包含镜像(镜像内编译,零宿主依赖)
+#
+# 与上游"拷贝预编译 musl 二进制"模型不同:本 fork 走脚本构建(build-images.sh),
+# 所以把 daemon 也做成和 server 同款的多阶段自包含构建 —— 一条 docker build 出镜像,
+# 宿主不需要 Rust/musl 工具链。
+#   docker build -f backend/Dockerfile.daemon -t <registry>/scanopy-daemon:<tag> .   (context=仓库根)
+# ============================================
 
-ARG TARGETARCH
+# ============================================
+# Stage 1: Prepare Rust dependencies
+# ============================================
+FROM lukemathwalker/cargo-chef:latest-rust-1.90 AS chef
+WORKDIR /app
+
+FROM chef AS planner
+COPY backend/ .
+RUN cargo chef prepare --recipe-path recipe.json
+
+# ============================================
+# Stage 2: Build daemon binary
+# ============================================
+FROM chef AS rust-builder
+
+# Build dependencies first (cached layer)
+COPY --from=planner /app/recipe.json recipe.json
+# `snmp2` is a path dependency (vendor/snmp2). cargo-chef's cook step compiles
+# dependencies from recipe.json, so the path-dep source must be present here or
+# cook fails reading vendor/snmp2/Cargo.toml (same as backend/Dockerfile).
+COPY backend/vendor/ ./vendor/
+RUN cargo chef cook --release --recipe-path recipe.json
+
+# Build the daemon binary
+COPY backend/ .
+RUN cargo build --release --bin daemon
+
+# Verify binary exists
+RUN test -f /app/target/release/daemon || (echo "Daemon binary not found" && exit 1)
+
+# ============================================
+# Stage 3: Final runtime image
+# ============================================
+FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update && apt-get install -y \
     ca-certificates \
@@ -12,8 +52,8 @@ RUN apt-get update && apt-get install -y \
     tcpdump \
     && rm -rf /var/lib/apt/lists/*
 
-# Pre-built binary copied in during build (named by architecture)
-COPY scanopy-daemon-linux-${TARGETARCH} /usr/local/bin/scanopy-daemon
+# Daemon binary compiled in the rust-builder stage
+COPY --from=rust-builder /app/target/release/daemon /usr/local/bin/scanopy-daemon
 RUN chmod +x /usr/local/bin/scanopy-daemon
 
 # OCI Image Spec labels — https://github.com/opencontainers/image-spec/blob/main/annotations.md
