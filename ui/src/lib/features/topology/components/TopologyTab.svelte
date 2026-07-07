@@ -3,6 +3,7 @@
 	import PreDaemonEmptyState from '$lib/shared/components/layout/PreDaemonEmptyState.svelte';
 	import { hasDaemon } from '$lib/shared/onboarding/checklist';
 	import TopologyViewer from './visualization/TopologyViewer.svelte';
+	import DeviceScreenViewer from './visualization/DeviceScreenViewer.svelte';
 	import TopologyOptionsPanel from './panel/TopologyOptionsPanel.svelte';
 	import { Camera, Radar, Share2, Trash2 } from 'lucide-svelte';
 	import ExportButton from './ExportButton.svelte';
@@ -274,13 +275,30 @@
 	// View selector — built from fixture data
 	import viewsJson from '$lib/data/views.json';
 
-	const allViewOptions: SimpleOption[] = viewsJson.map((p) => ({
-		value: p.id,
-		label: p.name,
-		description: p.description,
-		icon: views.getIconComponent(p.id),
-		iconColor: views.getColorHelper(p.id).icon
-	}));
+	// n9e 嵌入:大屏「设备互联图」—— 前端 render-mode(数据复用 L2Physical),不是后端视图。
+	const DEVICE_SCREEN_VIEW = 'DeviceScreen';
+	let deviceScreenMode = $state(false);
+
+	// n9e 嵌入:隐藏工具栏其它控件(下载/分享/发现进度/网络选择/快照 Live view/截图),
+	// 只保留视图(拓扑)切换器。网络由自动选择逻辑兜底(见下方 networksData $effect),快照默认 live。
+	const SHOW_TOOLBAR_CONTROLS = false;
+
+	const allViewOptions: SimpleOption[] = [
+		...viewsJson.map((p) => ({
+			value: p.id,
+			label: p.name,
+			description: p.description,
+			icon: views.getIconComponent(p.id),
+			iconColor: views.getColorHelper(p.id).icon
+		})),
+		{
+			value: DEVICE_SCREEN_VIEW,
+			label: '设备互联图',
+			description: '设备/接口端口状态 + 物理链路 大屏(基于 L2)',
+			icon: views.getIconComponent('L2Physical'),
+			iconColor: views.getColorHelper('L2Physical').icon
+		}
+	];
 
 	// A snapshot can only show views whose data it captured (you can't set up
 	// SNMP or create app tags on a historical snapshot), so restrict the picker
@@ -495,6 +513,17 @@
 
 	// Handle view selection (user-initiated)
 	function handleViewChange(value: string) {
+		// 「设备互联图」:开 render-mode,数据走 L2Physical;其它视图关掉它。
+		if (value === DEVICE_SCREEN_VIEW) {
+			deviceScreenMode = true;
+			const view = 'L2Physical' as TopologyView;
+			pushTopologyParams(get(selectedTopologyId), view);
+			activeView.set(view);
+			clearSelection();
+			showViewSwitcherHint.set(false);
+			return;
+		}
+		deviceScreenMode = false;
 		const view = value as TopologyView;
 		pushTopologyParams(get(selectedTopologyId), view);
 		activeView.set(view);
@@ -613,10 +642,12 @@
 		<div class="space-y-3">
 			<!-- Header -->
 			<div
-				class="card card-static flex items-center justify-evenly gap-2 px-2 py-2"
+				class="card card-static flex items-center gap-2 px-2 py-2 {SHOW_TOOLBAR_CONTROLS
+					? 'justify-evenly'
+					: 'justify-end'}"
 				style="border-bottom: 2px solid {viewColorStyle.rgb}; transition: border-color 0.3s ease;"
 			>
-				{#if currentTopology}
+				{#if currentTopology && SHOW_TOOLBAR_CONTROLS}
 					<div class="flex items-center gap-2">
 						<ExportButton onclick={() => (isExportModalOpen = true)} />
 						<!-- A share always renders the LIVE view (the backend builds the share
@@ -671,6 +702,7 @@
 				{/if}
 
 				{#if networksData.length > 0}
+					{#if SHOW_TOOLBAR_CONTROLS}
 					<RichSelect
 						label=""
 						selectedValue={$selectedNetworkId ?? ''}
@@ -719,12 +751,12 @@
 						{/if}
 					{/if}
 
-					<div class="card-divider-v self-stretch"></div>
+					{/if}
 
 					<div bind:this={viewSwitcherEl}>
 						<RichSelect
 							label=""
-							selectedValue={$activeView}
+							selectedValue={deviceScreenMode ? DEVICE_SCREEN_VIEW : $activeView}
 							displayComponent={SimpleOptionDisplay}
 							onSelect={handleViewChange}
 							options={viewOptions}
@@ -765,7 +797,11 @@
 							? () => (tutorialTypeToggled = true)
 							: undefined}
 					/>
-					<TopologyViewer bind:this={topologyViewer} topology={currentTopology} {isActive} />
+					{#if deviceScreenMode}
+						<DeviceScreenViewer topology={currentTopology} />
+					{:else}
+						<TopologyViewer bind:this={topologyViewer} topology={currentTopology} {isActive} />
+					{/if}
 					{#if $showDependencyTutorial}
 						<DependencyTutorial
 							onDismiss={dismissDependencyTutorial}
