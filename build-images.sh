@@ -25,11 +25,15 @@ DAEMON_IMG="${REGISTRY}/scanopy-daemon:${TAG}"
 
 log() { printf '\n[%s] %s\n' "$(date +%H:%M:%S)" "$*"; }
 
+# --network=host:build 容器直接借宿主协议栈,绕开网桥 NAT(容器内 apt/cargo/npm
+# 拉不动的问题)。对齐 n9e 的 build 配置(deploy/single-node/docker-compose.yaml 的 network: host)。
+BUILD_NET="${BUILD_NET:---network=host}"
+
 log "构建 server 镜像 -> ${SERVER_IMG}"
-docker build --platform linux/amd64 -f backend/Dockerfile -t "${SERVER_IMG}" .
+docker build ${BUILD_NET} --platform linux/amd64 -f backend/Dockerfile -t "${SERVER_IMG}" .
 
 log "构建 daemon 镜像 -> ${DAEMON_IMG}"
-docker build --platform linux/amd64 -f backend/Dockerfile.daemon -t "${DAEMON_IMG}" .
+docker build ${BUILD_NET} --platform linux/amd64 -f backend/Dockerfile.daemon -t "${DAEMON_IMG}" .
 
 if [[ "${SKIP_PUSH:-}" == "1" ]]; then
   log "SKIP_PUSH=1,跳过推送。镜像已在本地:${SERVER_IMG} + ${DAEMON_IMG}"
