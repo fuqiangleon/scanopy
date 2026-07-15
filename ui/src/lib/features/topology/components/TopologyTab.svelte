@@ -83,6 +83,7 @@
 		topology_takeSnapshot
 	} from '$lib/paraglide/messages';
 	import { useConfigQuery } from '$lib/shared/stores/config-query';
+	import { isEmbed } from '$lib/shared/utils/embed';
 
 	let { isReadOnly = false, isActive = false }: TabProps = $props();
 
@@ -408,9 +409,15 @@
 		if (currentTopology && currentTopology.id !== lastHydratedId) {
 			lastHydratedId = currentTopology.id;
 			hydrateStoresFromTopology(currentTopology, isFirstHydration);
-			if (!urlViewConsumed && urlParams.view) {
+			if (!urlViewConsumed) {
 				urlViewConsumed = true;
-				activeView.set(urlParams.view);
+				if (urlParams.view) {
+					// urlParams.view 已由 getTopologyParamsFromUrl 过滤为合法后端视图(L2/L3)。
+					applyView(urlParams.view);
+				} else if (isEmbed) {
+					applyView(DEVICE_SCREEN_VIEW); // 嵌入默认 = 设备互联图
+				}
+				// 非嵌入且无 ?view= → 不动,保持原 L3Logical 默认
 			}
 			isFirstHydration = false;
 		}
@@ -511,22 +518,22 @@
 		clearSelection();
 	}
 
-	// Handle view selection (user-initiated)
-	function handleViewChange(value: string) {
-		// 「设备互联图」:开 render-mode,数据走 L2Physical;其它视图关掉它。
+	// 把「进某视图」的核心状态变更抽出,供用户点击(handleViewChange)与首帧默认共用。
+	function applyView(value: string) {
 		if (value === DEVICE_SCREEN_VIEW) {
 			deviceScreenMode = true;
-			const view = 'L2Physical' as TopologyView;
-			pushTopologyParams(get(selectedTopologyId), view);
-			activeView.set(view);
-			clearSelection();
-			showViewSwitcherHint.set(false);
+			activeView.set('L2Physical'); // 设备互联图的数据源
 			return;
 		}
 		deviceScreenMode = false;
-		const view = value as TopologyView;
-		pushTopologyParams(get(selectedTopologyId), view);
-		activeView.set(view);
+		activeView.set(value as TopologyView);
+	}
+
+	// Handle view selection (user-initiated)
+	function handleViewChange(value: string) {
+		applyView(value);
+		// device 模式下 activeView=L2Physical → URL 写 ?view=L2Physical(既有行为,故意保留)。
+		pushTopologyParams(get(selectedTopologyId), get(activeView));
 		clearSelection();
 		showViewSwitcherHint.set(false);
 	}
