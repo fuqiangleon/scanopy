@@ -597,6 +597,10 @@
 	let hoverLink = $state(-1);
 	let tipX = $state(0),
 		tipY = $state(0);
+	let tipEl = $state<HTMLDivElement | undefined>();
+	function clampTip(pos: number, size: number, vp: number) {
+		return Math.max(8, Math.min(pos, vp - size - 8));
+	}
 
 	function radius(role: Role) {
 		return role === 'core' ? 28 : role === 'agg' ? 24 : role === 'sec' ? 24 : role === 'wlan' ? 18 : 19;
@@ -817,7 +821,8 @@
 			{@const rect = containerEl.getBoundingClientRect()}
 			<div
 				class="tip"
-				style="left:{Math.min(tipX - rect.left + 14, vpW - 300)}px; top:{tipY - rect.top + 14}px"
+				bind:this={tipEl}
+				style="left:{clampTip(tipX - rect.left + 14, tipEl?.offsetWidth ?? 340, vpW)}px; top:{clampTip(tipY - rect.top + 14, tipEl?.offsetHeight ?? 120, vpH)}px"
 			>
 				<div class="tip-head">{devices[e.s].name} ⇄ {devices[e.t].name}</div>
 				<div class="tip-sub">{e.ports.length} 条端口链路</div>
@@ -1148,7 +1153,7 @@
 	.tip {
 		position: absolute;
 		z-index: 5;
-		max-width: 300px;
+		max-width: min(90vw, 720px);
 		pointer-events: none;
 		background: var(--color-bg-surface);
 		border: 1px solid var(--color-border);
