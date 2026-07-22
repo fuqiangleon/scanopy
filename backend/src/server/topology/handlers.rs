@@ -79,6 +79,17 @@ pub fn create_router() -> OpenApiRouter<Arc<AppState>> {
         // .routes(routes!(update_edge_handles))
         // SSE endpoint (not well-supported by OpenAPI)
         .route("/stream", get(live_topology_updates_stream))
+        // 自定义拓扑视图 CRUD（手写 handler，不进 OpenAPI 生成）
+        .route(
+            "/custom",
+            get(super::custom_handlers::list_custom).post(super::custom_handlers::create_custom),
+        )
+        .route(
+            "/custom/{id}",
+            get(super::custom_handlers::get_custom)
+                .put(super::custom_handlers::update_custom)
+                .delete(super::custom_handlers::delete_custom),
+        )
 }
 
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
