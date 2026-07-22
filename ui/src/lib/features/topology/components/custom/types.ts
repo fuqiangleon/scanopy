@@ -13,3 +13,25 @@ export interface DeviceItem {
 	/** 在线状态：true=在线(绿) false=离线(红)。 */
 	up?: boolean;
 }
+
+// 与后端 CustomGraph(topology/types/custom.rs)对齐的持久化载荷。
+export interface CustomGraphNode {
+	id: string;
+	kind: 'blank' | 'device_ref';
+	host_id?: string | null;
+	icon: string;
+	label: string;
+	x: number;
+	y: number;
+}
+export interface CustomGraphEdge {
+	id: string;
+	source: string;
+	target: string;
+	kind: 'real' | 'draw';
+	label?: string | null;
+}
+export interface CustomGraphPayload {
+	nodes: CustomGraphNode[];
+	edges: CustomGraphEdge[];
+}

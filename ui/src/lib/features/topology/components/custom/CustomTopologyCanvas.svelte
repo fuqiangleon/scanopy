@@ -11,14 +11,27 @@
 		type Connection
 	} from '@xyflow/svelte';
 	import '@xyflow/svelte/dist/style.css';
-	import { writable } from 'svelte/store';
+	import { writable, get } from 'svelte/store';
+	import { onMount } from 'svelte';
 	import BlankNode from './BlankNode.svelte';
 	import DeviceRefNode from './DeviceRefNode.svelte';
 	import { ICON_LIST, iconSvg } from './icons';
 	import type { DeviceItem } from './types';
 
-	// 父组件注入的真实设备列表（从 hosts/topology 数据映射）；缺省空。
-	let { devices = [] }: { devices?: DeviceItem[] } = $props();
+	import type { CustomGraphPayload } from './types';
+
+	// props：真实设备列表、视图名、初始图、保存回调（父组件接后端持久化）。
+	let {
+		devices = [],
+		name = '未命名视图',
+		initialGraph,
+		onsave
+	}: {
+		devices?: DeviceItem[];
+		name?: string;
+		initialGraph?: CustomGraphPayload;
+		onsave?: (graph: CustomGraphPayload) => void;
+	} = $props();
 
 	// Svelte Flow 数据
 	const nodes = writable<Node[]>([]);
@@ -99,10 +112,92 @@
 		};
 		edges.update((list) => [...list, edge]);
 	}
+
+	// ---- 选中 / 删除 ----
+	let selectedId = $state<string | null>(null);
+
+	function handleNodeClick({ node }: { node: Node }): void {
+		selectedId = node.id;
+	}
+
+	function deleteSelected(): void {
+		if (!selectedId) return;
+		const target = selectedId;
+		nodes.update((list) => list.filter((n) => n.id !== target));
+		edges.update((list) => list.filter((e) => e.source !== target && e.target !== target));
+		selectedId = null;
+	}
+
+	// ---- 序列化 / 保存 ----
+	function serializeGraph(): CustomGraphPayload {
+		const ns = get(nodes).map((n) => ({
+			id: n.id,
+			kind: (n.type === 'device' ? 'device_ref' : 'blank') as 'blank' | 'device_ref',
+			host_id: (n.data?.hostId as string | undefined) ?? null,
+			icon: (n.data?.icon as string | undefined) ?? 'server',
+			label: (n.data?.label as string | undefined) ?? '',
+			x: n.position.x,
+			y: n.position.y
+		}));
+		const es = get(edges).map((e) => ({
+			id: e.id,
+			source: e.source,
+			target: e.target,
+			kind: (e.data?.kind as 'real' | 'draw' | undefined) ?? 'draw',
+			label: (e.data?.label as string | undefined) ?? null
+		}));
+		return { nodes: ns, edges: es };
+	}
+
+	function handleSave(): void {
+		onsave?.(serializeGraph());
+	}
+
+	// ---- 加载初始图 ----
+	function loadGraph(g: CustomGraphPayload): void {
+		nodes.set(
+			g.nodes.map((n) => ({
+				id: n.id,
+				type: n.kind === 'device_ref' ? 'device' : 'blank',
+				position: { x: n.x, y: n.y },
+				data:
+					n.kind === 'device_ref'
+						? {
+								hostId: n.host_id,
+								icon: n.icon,
+								label: n.label,
+								up: devices.find((d) => d.id === n.host_id)?.up
+							}
+						: { icon: n.icon, label: n.label }
+			}))
+		);
+		edges.set(
+			g.edges.map((e) => ({
+				id: e.id,
+				source: e.source,
+				target: e.target,
+				data: { kind: e.kind },
+				style: EDGE_STYLE[e.kind]
+			}))
+		);
+	}
+
+	onMount(() => {
+		if (initialGraph) loadGraph(initialGraph);
+	});
 </script>
 
-<div class="custom-topology">
-	<aside class="library">
+<div class="custom-topology-wrap">
+	<header class="toolbar">
+		<span class="view-name">📁 {name}</span>
+		<span class="spacer"></span>
+		<button class="tb-btn" type="button" onclick={deleteSelected} disabled={!selectedId}>
+			🗑 删除选中
+		</button>
+		<button class="tb-btn primary" type="button" onclick={handleSave}>💾 保存</button>
+	</header>
+	<div class="custom-topology">
+		<aside class="library">
 		<div class="tabs">
 			<button class="tab" class:active={tab === 'icons'} type="button" onclick={() => (tab = 'icons')}>
 				📦 图标库
@@ -177,18 +272,64 @@
 			nodesDraggable
 			nodesConnectable
 			onnodedragstop={handleNodeDragStop}
+			onnodeclick={handleNodeClick}
 			onconnect={handleConnect}
 		>
 			<Background variant={BackgroundVariant.Dots} gap={22} />
 			<Controls />
 		</SvelteFlow>
+		</div>
 	</div>
 </div>
 
 <style>
+	.custom-topology-wrap {
+		display: flex;
+		flex-direction: column;
+		height: 100%;
+		min-height: 0;
+	}
+	.toolbar {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 8px 14px;
+		background: #fff;
+		border-bottom: 1px solid #e3e8f0;
+		flex-shrink: 0;
+	}
+	.view-name {
+		font-weight: 600;
+		font-size: 14px;
+		color: #1e293b;
+	}
+	.spacer {
+		flex: 1;
+	}
+	.tb-btn {
+		border: 1px solid #e3e8f0;
+		background: #fff;
+		color: #334155;
+		padding: 6px 12px;
+		border-radius: 7px;
+		font-size: 13px;
+		cursor: pointer;
+	}
+	.tb-btn:hover {
+		background: #f7f9fc;
+	}
+	.tb-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	.tb-btn.primary {
+		background: #2d77ee;
+		color: #fff;
+		border-color: #2d77ee;
+	}
 	.custom-topology {
 		display: flex;
-		height: 100%;
+		flex: 1;
 		min-height: 0;
 	}
 	.library {
