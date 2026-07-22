@@ -498,14 +498,112 @@
 		return { pos, x0, y0, x1, y1, tierInfo };
 	});
 
-	let mode = $state<'tree' | 'layered' | 'force'>('tree');
-	let activeLayout = $derived(
-		mode === 'tree' ? treeLayout : mode === 'layered' ? layeredLayout : forceLayout
-	);
-	const MODE_LABEL: Record<typeof mode, string> = { tree: '树形', layered: '分层', force: '力导向' };
-	function cycleMode() {
-		mode = mode === 'tree' ? 'layered' : mode === 'layered' ? 'force' : 'tree';
+	// ---- 正交布局(ELK layered + ORTHOGONAL 折线,异步懒加载 elkjs;与原生 L2/L3 同引擎)----
+	let elkInstance: any = null;
+	async function getElk() {
+		if (!elkInstance) {
+			const mod: any = await import('elkjs/lib/elk.bundled.js');
+			elkInstance = new mod.default();
+		}
+		return elkInstance;
 	}
+	const nodeW = (d: Dev) => Math.max(radius(d.role) * 2 + 8, d.name.length * 7 + 12);
+	const nodeH = (d: Dev) => radius(d.role) * 2 + 22;
+	type ElkLayout = {
+		pos: { x: number; y: number }[];
+		x0: number;
+		y0: number;
+		x1: number;
+		y1: number;
+		tierInfo: { y: number; label: string }[];
+		routes: Map<string, number[][]>;
+	};
+	let elkLayout = $state<ElkLayout>({ pos: [], x0: 0, y0: 0, x1: 1, y1: 1, tierInfo: [], routes: new Map() });
+	let elkComputing = $state(false);
+	let elkKey = '';
+	async function computeElk() {
+		const devs = devices,
+			dl = deviceLinks;
+		if (!devs.length) return;
+		elkComputing = true;
+		let elk;
+		try {
+			elk = await getElk();
+		} catch {
+			elkComputing = false;
+			return;
+		}
+		const graph = {
+			id: 'root',
+			layoutOptions: {
+				'elk.algorithm': 'layered',
+				'elk.direction': 'DOWN',
+				'elk.edgeRouting': 'ORTHOGONAL',
+				'elk.layered.spacing.nodeNodeBetweenLayers': '80',
+				'elk.spacing.nodeNode': '36',
+				'elk.layered.spacing.edgeEdgeBetweenLayers': '12',
+				'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
+				'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
+				'elk.randomSeed': '1'
+			},
+			children: devs.map((d, i) => ({ id: 'n' + i, width: nodeW(d), height: nodeH(d) })),
+			edges: dl.map((e, i) => ({ id: 'e' + i, sources: ['n' + e.s], targets: ['n' + e.t] }))
+		};
+		let res: any;
+		try {
+			res = await elk.layout(graph);
+		} catch {
+			elkComputing = false;
+			return;
+		}
+		const byId = new Map(res.children.map((c: any) => [c.id, c]));
+		const pos = devs.map((_, i) => {
+			const c: any = byId.get('n' + i);
+			return c ? { x: c.x + c.width / 2, y: c.y + c.height / 2 } : { x: 0, y: 0 };
+		});
+		const routes = new Map<string, number[][]>();
+		res.edges.forEach((e: any, i: number) => {
+			const sec = (e.sections || [])[0];
+			if (!sec) return;
+			const pts: number[][] = [
+				[sec.startPoint.x, sec.startPoint.y],
+				...(sec.bendPoints || []).map((p: any) => [p.x, p.y]),
+				[sec.endPoint.x, sec.endPoint.y]
+			];
+			routes.set(dl[i].s + '-' + dl[i].t, pts);
+		});
+		elkLayout = { pos, x0: 0, y0: 0, x1: res.width, y1: res.height, tierInfo: [], routes };
+		elkComputing = false;
+	}
+
+	let mode = $state<'tree' | 'layered' | 'force' | 'elk'>('tree');
+	let activeLayout = $derived(
+		mode === 'elk'
+			? elkLayout
+			: mode === 'tree'
+				? treeLayout
+				: mode === 'layered'
+					? layeredLayout
+					: forceLayout
+	);
+	const MODE_LABEL: Record<typeof mode, string> = {
+		tree: '树形',
+		layered: '分层',
+		force: '力导向',
+		elk: '正交'
+	};
+	function cycleMode() {
+		mode =
+			mode === 'tree' ? 'layered' : mode === 'layered' ? 'force' : mode === 'force' ? 'elk' : 'tree';
+	}
+	// 切到正交 / 数据变化时重算 ELK
+	$effect(() => {
+		if (mode !== 'elk') return;
+		const key = networkId + ':' + devices.length + ':' + deviceLinks.length;
+		if (key === elkKey) return;
+		elkKey = key;
+		computeElk();
+	});
 
 	// ---- 手动拖拽的持久化坐标(localStorage 按网络)----
 	let saved = new SvelteMap<string, { x: number; y: number }>();
@@ -711,6 +809,10 @@
 			>
 		</div>
 
+		{#if elkComputing}
+			<div class="elk-loading">正交布局计算中…</div>
+		{/if}
+
 		<svg class="stage" width="100%" height="100%">
 			<g transform="translate({tx},{ty}) scale({scale})">
 				<!-- 分层/树形模式:层引导线 + 左侧层名 -->
@@ -735,13 +837,14 @@
 					{@const b = nodePos(e.t)}
 					{@const rel = e.s === hover || e.t === hover}
 					{@const scol = e.status === 'up' ? '#22c55e' : e.status === 'down' ? '#ef4444' : '#94a3b8'}
+					{@const dragged = saved.has(devices[e.s].id) || saved.has(devices[e.t].id)}
+					{@const route = mode === 'elk' && !dragged ? elkLayout.routes.get(e.s + '-' + e.t) : null}
+					{@const pts = route ?? [[a.x, a.y], [b.x, b.y]]}
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<!-- svelte-ignore a11y_click_events_have_key_events -->
-					<line
-						x1={a.x}
-						y1={a.y}
-						x2={b.x}
-						y2={b.y}
+					<polyline
+						points={pts.map((p) => p[0] + ',' + p[1]).join(' ')}
+						fill="none"
 						style="stroke:{scol}"
 						stroke-width={(hoverLink === li || selectedLink === li
 							? 4
@@ -1185,5 +1288,19 @@
 		height: 100%;
 		color: var(--color-text-secondary);
 		font-size: 13px;
+	}
+	.elk-loading {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		z-index: 4;
+		padding: 10px 20px;
+		background: var(--color-bg-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		color: var(--color-text-secondary);
+		font-size: 13px;
+		backdrop-filter: blur(6px);
 	}
 </style>
