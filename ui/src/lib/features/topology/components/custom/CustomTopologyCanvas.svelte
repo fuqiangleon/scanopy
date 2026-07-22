@@ -7,7 +7,8 @@
 		BackgroundVariant,
 		Controls,
 		type Node,
-		type Edge
+		type Edge,
+		type Connection
 	} from '@xyflow/svelte';
 	import '@xyflow/svelte/dist/style.css';
 	import { writable } from 'svelte/store';
@@ -25,8 +26,16 @@
 	const nodeTypes = { blank: BlankNode, device: DeviceRefNode };
 
 	let idCounter = $state(0);
+	let edgeCounter = $state(0);
 	let tab = $state<'icons' | 'devices'>('icons');
 	let query = $state('');
+	// 连线类型：real=引用真实链路(蓝实线) draw=手绘逻辑(灰虚线)
+	let linkType = $state<'real' | 'draw'>('real');
+
+	const EDGE_STYLE = {
+		real: 'stroke:#2d77ee;stroke-width:2',
+		draw: 'stroke:#94a3b8;stroke-width:2;stroke-dasharray:6 5'
+	} as const;
 
 	const filteredDevices = $derived(
 		devices.filter((d) => {
@@ -76,6 +85,20 @@
 			list.map((n) => (n.id === targetNode.id ? { ...n, position: targetNode.position } : n))
 		);
 	}
+
+	/** 连线：拖 handle 从起点到终点，按当前线型新增一条边。 */
+	function handleConnect(connection: Connection): void {
+		if (!connection.source || !connection.target || connection.source === connection.target) return;
+		const id = `edge-${edgeCounter++}`;
+		const edge: Edge = {
+			id,
+			source: connection.source,
+			target: connection.target,
+			data: { kind: linkType },
+			style: EDGE_STYLE[linkType]
+		};
+		edges.update((list) => [...list, edge]);
+	}
 </script>
 
 <div class="custom-topology">
@@ -124,6 +147,24 @@
 			</div>
 			<p class="lib-hint">点击 = 加入真实设备，状态实时联动。</p>
 		{/if}
+
+		<div class="link-type">
+			<div class="lt-title">连线类型（拖节点连接柄）</div>
+			<div class="lt-btns">
+				<button
+					class="lt-btn"
+					class:active={linkType === 'real'}
+					type="button"
+					onclick={() => (linkType = 'real')}>— 实线·真实链路</button
+				>
+				<button
+					class="lt-btn"
+					class:active={linkType === 'draw'}
+					type="button"
+					onclick={() => (linkType = 'draw')}>┅ 虚线·手绘</button
+				>
+			</div>
+		</div>
 	</aside>
 
 	<div class="canvas">
@@ -134,7 +175,9 @@
 			fitView
 			snapGrid={[25, 25]}
 			nodesDraggable
+			nodesConnectable
 			onnodedragstop={handleNodeDragStop}
+			onconnect={handleConnect}
 		>
 			<Background variant={BackgroundVariant.Dots} gap={22} />
 			<Controls />
@@ -265,6 +308,36 @@
 		color: #94a3b8;
 		line-height: 1.5;
 		margin: 0;
+	}
+	.link-type {
+		margin-top: auto;
+		border-top: 1px solid #eef2f7;
+		padding-top: 10px;
+	}
+	.lt-title {
+		font-size: 11px;
+		color: #64748b;
+		margin-bottom: 6px;
+	}
+	.lt-btns {
+		display: flex;
+		flex-direction: column;
+		gap: 5px;
+	}
+	.lt-btn {
+		padding: 6px 8px;
+		font-size: 12px;
+		border: 1px solid #e3e8f0;
+		border-radius: 7px;
+		background: #fff;
+		color: #475569;
+		cursor: pointer;
+		text-align: left;
+	}
+	.lt-btn.active {
+		border-color: #2d77ee;
+		color: #2d77ee;
+		background: #f5f9ff;
 	}
 	.canvas {
 		flex: 1;
