@@ -15,10 +15,9 @@
 	import { onMount } from 'svelte';
 	import BlankNode from './BlankNode.svelte';
 	import DeviceRefNode from './DeviceRefNode.svelte';
-	import Icon from '@iconify/svelte';
 	import { Trash2, Save, Boxes, Search, FolderOpen } from 'lucide-svelte';
 	import SegmentedControl from '$lib/shared/components/forms/SegmentedControl.svelte';
-	import { ICON_GROUPS, iconName } from './icons';
+	import { ICON_GROUPS, iconSvg } from './icons';
 	import type { DeviceItem } from './types';
 
 	import type { CustomGraphPayload } from './types';
@@ -235,7 +234,7 @@
 								title={item.name}
 								onclick={() => addBlankNode(item.key, item.name)}
 							>
-								<span class="lib-icon"><Icon icon={iconName(item.key)} /></span>
+								<span class="lib-icon">{@html iconSvg(item.key)}</span>
 								<span class="lib-name">{item.name}</span>
 							</button>
 						{/each}
@@ -457,5 +456,11 @@
 	/* SvelteFlow 画布 pane 用拓扑专用底色(与默认 L2/L3 拓扑一致,暗色 #15131e)*/
 	.canvas :global(.svelte-flow) {
 		background: var(--color-topology-bg);
+		/* Controls(缩放/适配/锁定)按钮跟随明暗主题,避免暗色下白框突兀 */
+		--xy-controls-button-background-color: var(--color-bg-elevated);
+		--xy-controls-button-background-color-hover: var(--color-bg-surface-hover);
+		--xy-controls-button-color: var(--color-text-secondary);
+		--xy-controls-button-color-hover: var(--color-text-primary);
+		--xy-controls-button-border-color: var(--color-border);
 	}
 </style>

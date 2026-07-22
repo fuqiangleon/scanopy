@@ -1,8 +1,7 @@
 <script lang="ts">
 	// 自定义拓扑「设备引用」节点：引用真实设备(host_id),右上角状态点实时联动。
 	import { Handle, Position, type NodeProps } from '@xyflow/svelte';
-	import Icon from '@iconify/svelte';
-	import { iconName } from './icons';
+	import { iconSvg } from './icons';
 
 	let { data }: NodeProps = $props();
 
@@ -25,7 +24,7 @@
 		class:offline={up === false}
 		class:unknown={up === undefined}
 	></span>
-	<div class="icon"><Icon icon={iconName(icon)} /></div>
+	<div class="icon">{@html iconSvg(icon)}</div>
 	<div class="text">
 		<div class="label">{label}</div>
 		{#if sub}<div class="sub">{sub}</div>{/if}

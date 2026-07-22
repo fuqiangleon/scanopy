@@ -1,8 +1,7 @@
 <script lang="ts">
 	// 自定义拓扑「空白图标」节点：图标库拖出的手绘节点（无实时状态）。
 	import { Handle, Position, type NodeProps } from '@xyflow/svelte';
-	import Icon from '@iconify/svelte';
-	import { iconName } from './icons';
+	import { iconSvg } from './icons';
 
 	let { data }: NodeProps = $props();
 
@@ -16,7 +15,7 @@
 	<Handle id="r" type="source" position={Position.Right} />
 	<Handle id="b" type="source" position={Position.Bottom} />
 	<Handle id="l" type="source" position={Position.Left} />
-	<div class="icon"><Icon icon={iconName(icon)} /></div>
+	<div class="icon">{@html iconSvg(icon)}</div>
 	<div class="label">{label}</div>
 </div>
 

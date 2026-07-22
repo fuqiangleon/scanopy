@@ -1,12 +1,11 @@
 // 自定义拓扑图标库(Iconify)。
 // 设计:graph 里持久化的是稳定语义 key（'switch'/'server'…），与图标集解耦;
-// 这里把 key 映射到 Iconify 图标名,由 @iconify/svelte <Icon> 渲染。
+// 这里把 key 映射到 Iconify 图标名,再由 icon-svgs.ts 的内联 SVG 渲染({@html})。
 // 换图标只改这张表,不动数据。图标名均已通过 Iconify API 核实存在。
 
-// 离线注册:所有图标消费方(BlankNode/DeviceRefNode/Canvas)都从本模块导入,
-// 故在此注册离线数据,保证渲染前完成,且不触发运行时公网请求(内网可用)。
-import { registerCustomTopoIcons } from './icon-data';
-registerCustomTopoIcons();
+// 离线内联 SVG:所有图标消费方(BlankNode/DeviceRefNode/Canvas)用 {@html iconSvg(key)} 渲染。
+// 不依赖运行时 @iconify/svelte,也不请求公网 —— 内网/离线可用,且 Jenkins 无需装新依赖。
+import { ICON_SVGS } from './icon-svgs';
 
 // 语义 key → Iconify 图标名。
 // 单色图标(material-symbols/mdi/tabler/carbon)走 currentColor,可被 .icon 的 color 主题化;
@@ -115,4 +114,9 @@ export const ICON_GROUPS: IconGroup[] = ICON_LIST.reduce((acc: IconGroup[], item
 /** 语义 key → Iconify 图标名(未知 key 回退到 server)。 */
 export function iconName(key: string): string {
 	return ICON_NAMES[key] ?? ICON_NAMES.server;
+}
+
+/** 语义 key → 完整内联 SVG 字符串(离线,供 {@html} 渲染)。 */
+export function iconSvg(key: string): string {
+	return ICON_SVGS[iconName(key)] ?? ICON_SVGS[ICON_NAMES.server] ?? '';
 }
