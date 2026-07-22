@@ -5,8 +5,12 @@
 //! 但节点可通过 `host_id` **引用真实设备**，渲染时叠加实时状态（在线/名称）。
 //! 因此单独建实体，避免触碰自动拓扑脆弱的重建逻辑。
 
+use crate::server::shared::storage::traits::{SqlValue, Storable};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use sqlx::Row;
+use sqlx::postgres::PgRow;
+use std::fmt::Display;
 use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
@@ -109,4 +113,84 @@ pub struct CustomEdge {
     #[serde(default)]
     #[validate(length(max = 200))]
     pub label: Option<String>,
+}
+
+// ---- 持久化(只实现 Storable + Display,复用 GenericPostgresStorage;不接入 Entity 系统)----
+
+impl Storable for CustomTopology {
+    type BaseData = CustomTopologyBase;
+
+    fn table_name() -> &'static str {
+        "custom_topologies"
+    }
+
+    fn new(base: Self::BaseData) -> Self {
+        let now = Utc::now();
+        Self {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            base,
+        }
+    }
+
+    fn get_base(&self) -> Self::BaseData {
+        self.base.clone()
+    }
+
+    fn to_params(&self) -> Result<(Vec<&'static str>, Vec<SqlValue>), anyhow::Error> {
+        let Self {
+            id,
+            created_at,
+            updated_at,
+            base:
+                CustomTopologyBase {
+                    network_id,
+                    name,
+                    graph,
+                },
+        } = self.clone();
+
+        Ok((
+            vec![
+                "id",
+                "created_at",
+                "updated_at",
+                "network_id",
+                "name",
+                "graph",
+            ],
+            vec![
+                SqlValue::Uuid(id),
+                SqlValue::Timestamp(created_at),
+                SqlValue::Timestamp(updated_at),
+                SqlValue::Uuid(network_id),
+                SqlValue::String(name),
+                SqlValue::CustomGraph(graph),
+            ],
+        ))
+    }
+
+    fn from_row(row: &PgRow) -> Result<Self, anyhow::Error> {
+        let graph: CustomGraph =
+            serde_json::from_value(row.get::<serde_json::Value, _>("graph"))
+                .map_err(|e| anyhow::anyhow!("Failed to deserialize custom graph: {}", e))?;
+
+        Ok(CustomTopology {
+            id: row.get("id"),
+            created_at: row.get("created_at"),
+            updated_at: row.get("updated_at"),
+            base: CustomTopologyBase {
+                network_id: row.get("network_id"),
+                name: row.get("name"),
+                graph,
+            },
+        })
+    }
+}
+
+impl Display for CustomTopology {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "CustomTopology {{ id: {} }}", self.id)
+    }
 }

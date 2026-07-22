@@ -14,6 +14,7 @@ use crate::server::snmp::resolution::lldp::{LldpChassisId, LldpPortId};
 use crate::server::subnets::r#impl::base::Subnet;
 use crate::server::subnets::r#impl::virtualization::SubnetVirtualization;
 use crate::server::tags::r#impl::base::Tag;
+use crate::server::topology::types::custom::CustomGraph;
 use crate::server::topology::types::views::TopologyView;
 use crate::server::vlans::r#impl::base::Vlan;
 use crate::server::{
@@ -252,6 +253,7 @@ pub enum SqlValue {
     Nodes(std::collections::HashMap<TopologyView, Vec<Node>>),
     Edges(std::collections::HashMap<TopologyView, Vec<Edge>>),
     TopologyOptions(TopologyOptions),
+    CustomGraph(CustomGraph),
     Hosts(Vec<Host>),
     Subnets(Vec<Subnet>),
     Services(Vec<Service>),
@@ -395,6 +397,7 @@ impl_db_enum_contributor_empty!(
     UserOrgPermissions,
     EmailSettings,
     TopologyOptions,
+    CustomGraph,
     ShareOptions,
     PlanLimitNotifications,
     Port,
@@ -575,6 +578,7 @@ impl SqlValue {
             SqlValueDiscriminants::Nodes => Node::contribute(out),
             SqlValueDiscriminants::Edges => Edge::contribute(out),
             SqlValueDiscriminants::TopologyOptions => TopologyOptions::contribute(out),
+            SqlValueDiscriminants::CustomGraph => CustomGraph::contribute(out),
             SqlValueDiscriminants::Hosts => Host::contribute(out),
             SqlValueDiscriminants::Subnets => Subnet::contribute(out),
             SqlValueDiscriminants::Services => Service::contribute(out),

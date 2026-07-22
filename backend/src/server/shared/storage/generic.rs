@@ -193,6 +193,7 @@ where
             SqlValue::Nodes(v) => query.bind(serde_json::to_value(v)?),
             SqlValue::Edges(v) => query.bind(serde_json::to_value(v)?),
             SqlValue::TopologyOptions(v) => query.bind(serde_json::to_value(v)?),
+            SqlValue::CustomGraph(v) => query.bind(serde_json::to_value(v)?),
             SqlValue::Hosts(v) => query.bind(serde_json::to_value(v)?),
             SqlValue::Subnets(v) => query.bind(serde_json::to_value(v)?),
             SqlValue::Services(v) => query.bind(serde_json::to_value(v)?),
