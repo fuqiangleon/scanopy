@@ -30,6 +30,9 @@ export interface CustomGraphEdge {
 	target: string;
 	kind: 'real' | 'draw';
 	label?: string | null;
+	/** 连接桩(节点四边):'t' | 'r' | 'b' | 'l'。 */
+	source_handle?: string | null;
+	target_handle?: string | null;
 }
 export interface CustomGraphPayload {
 	nodes: CustomGraphNode[];

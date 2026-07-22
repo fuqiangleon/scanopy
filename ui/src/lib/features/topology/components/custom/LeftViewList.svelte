@@ -1,11 +1,14 @@
 <script lang="ts">
 	// 拓扑页左侧视图分类列表：默认视图(L2/L3/设备互联图) + 自定义视图(可增删)。
 	// 替换原顶部 RichSelect 切换器。选中项由父组件(TopologyTab)驱动渲染。
-	import { Plus, Trash2 } from 'lucide-svelte';
+	import { Plus, Trash2, Waypoints } from 'lucide-svelte';
+	import type { IconComponent } from '$lib/shared/utils/types';
 
 	export interface BuiltinView {
 		value: string;
 		label: string;
+		icon?: IconComponent;
+		iconColor?: string;
 	}
 	export interface CustomView {
 		id: string;
@@ -40,7 +43,7 @@
 </script>
 
 <nav class="view-list">
-	<div class="group-title">默认视图</div>
+	<div class="group-title">系统拓扑</div>
 	<ul>
 		{#each builtinViews as v (v.value)}
 			<li>
@@ -50,14 +53,21 @@
 					type="button"
 					onclick={() => onSelectBuiltin(v.value)}
 				>
-					{v.label}
+					{#if v.icon}
+						{@const Icon = v.icon}
+						<Icon
+							class="view-icon"
+							style={!isBuiltinActive(v.value) && v.iconColor ? `color:${v.iconColor}` : undefined}
+						/>
+					{/if}
+					<span class="item-label">{v.label}</span>
 				</button>
 			</li>
 		{/each}
 	</ul>
 
 	<div class="group-title with-action">
-		<span>自定义视图</span>
+		<span>自定义拓扑</span>
 		<button class="add" type="button" title="新建自定义视图" onclick={onCreate}>
 			<Plus size={14} />
 		</button>
@@ -65,7 +75,10 @@
 	<ul>
 		{#each customViews as c (c.id)}
 			<li class="custom-row" class:active={isCustomActive(c.id)}>
-				<button class="item" type="button" onclick={() => onSelectCustom(c.id)}>{c.name}</button>
+				<button class="item" type="button" onclick={() => onSelectCustom(c.id)}>
+					<Waypoints class="view-icon" />
+					<span class="item-label">{c.name}</span>
+				</button>
 				<button class="del" type="button" title="删除" onclick={() => onDelete(c.id)}>
 					<Trash2 size={13} />
 				</button>
@@ -80,8 +93,8 @@
 	.view-list {
 		width: 208px;
 		flex-shrink: 0;
-		background: #fff;
-		border-right: 1px solid #e3e8f0;
+		background: var(--color-bg-surface);
+		border-right: 1px solid var(--color-border);
 		padding: 12px 8px;
 		overflow-y: auto;
 		display: flex;
@@ -89,11 +102,11 @@
 		gap: 4px;
 	}
 	.group-title {
-		font-size: 11px;
+		font-size: 12px;
 		font-weight: 600;
-		color: #94a3b8;
+		color: var(--color-text-secondary);
 		text-transform: uppercase;
-		letter-spacing: 0.04em;
+		letter-spacing: 0.03em;
 		padding: 10px 8px 4px;
 	}
 	.group-title.with-action {
@@ -111,7 +124,7 @@
 		border-radius: 5px;
 	}
 	.add:hover {
-		background: #eef4ff;
+		background: var(--color-bg-surface-hover);
 	}
 	ul {
 		list-style: none;
@@ -122,25 +135,47 @@
 		gap: 2px;
 	}
 	.item {
+		display: flex;
+		align-items: center;
+		gap: 8px;
 		width: 100%;
 		text-align: left;
-		border: none;
+		border: 1px solid transparent; /* 与选中态蓝边等宽,避免选中时布局跳动 */
 		background: transparent;
-		padding: 7px 10px;
+		padding: 6px 10px;
 		border-radius: 8px;
 		font-size: 13px;
-		color: #334155;
+		font-weight: 500;
+		color: var(--color-text-tertiary);
 		cursor: pointer;
+		transition: background-color 0.12s, color 0.12s;
+	}
+	/* 视图类型图标:显示拓扑层级/类型,尺寸统一,颜色随文字或视图色 */
+	.item :global(.view-icon) {
+		width: 15px;
+		height: 15px;
+		flex-shrink: 0;
+	}
+	.item-label {
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
 	.item:hover {
-		background: #f2f6ff;
+		background: var(--color-bg-surface-hover);
+		color: var(--color-text-secondary);
 	}
+	/* 选中态对齐 scanopy Sidebar:淡蓝底 + 主色文字 + 细蓝边(暗色加深) */
 	.item.active,
 	.custom-row.active .item {
-		background: #2d77ee;
+		background: #dbeafe;
+		border-color: rgba(59, 130, 246, 0.3);
+		color: var(--color-text-primary);
+	}
+	:global(.dark) .item.active,
+	:global(.dark) .custom-row.active .item {
+		background: #1d4ed8;
+		border-color: #2563eb;
 		color: #fff;
 	}
 	.custom-row {
@@ -153,7 +188,7 @@
 	.del {
 		border: none;
 		background: transparent;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		cursor: pointer;
 		padding: 4px;
 		border-radius: 5px;
@@ -164,15 +199,15 @@
 	}
 	.del:hover {
 		color: #dc2626;
-		background: #fef2f2;
+		background: var(--color-bg-surface-hover);
 	}
 	.custom-row.active .del {
-		color: rgba(255, 255, 255, 0.8);
+		color: var(--color-text-tertiary);
 		opacity: 1;
 	}
 	.empty {
 		font-size: 12px;
-		color: #cbd5e1;
+		color: var(--color-text-disabled);
 		padding: 6px 10px;
 	}
 </style>

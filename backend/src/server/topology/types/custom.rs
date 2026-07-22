@@ -113,6 +113,14 @@ pub struct CustomEdge {
     #[serde(default)]
     #[validate(length(max = 200))]
     pub label: Option<String>,
+    /// 起点连接桩(节点四边 t/r/b/l);None=旧数据/默认桩。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[validate(length(max = 20))]
+    pub source_handle: Option<String>,
+    /// 终点连接桩。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[validate(length(max = 20))]
+    pub target_handle: Option<String>,
 }
 
 // ---- 持久化(只实现 Storable + Display,复用 GenericPostgresStorage;不接入 Entity 系统)----

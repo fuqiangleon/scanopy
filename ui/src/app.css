@@ -55,6 +55,18 @@
 		--color-topology-zone: rgba(17, 24, 39, 0.2);
 	}
 
+	/* n9e 嵌入 + 暗色:把拓扑/面板色系对齐 n9e 的 Slate(#020617 页面底 / #0f172a 主背景 /
+	   #1e293b 卡片),消除嵌入页与 n9e 内容区(如「基础设施」)的色差。仅嵌入生效,独立部署不变。 */
+	html.n9e-embed.dark {
+		--color-bg-body: #020617; /* slate-950,同 n9e 页面底色 */
+		--color-bg-surface: #1e293b; /* slate-800,同 n9e 卡片 → 左列/图标库面板 */
+		--color-bg-surface-hover: #334155; /* slate-700 */
+		--color-bg-elevated: #0f172a; /* slate-900 */
+		--color-border: #1e293b; /* slate-800 */
+		--color-topology-bg: #020617; /* 画布 = n9e 页面底色 */
+		--color-topology-node-bg: #1e293b; /* 节点 = n9e 卡片 */
+	}
+
 	html {
 		font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 	}

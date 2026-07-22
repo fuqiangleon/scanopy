@@ -1,7 +1,8 @@
 <script lang="ts">
 	// 自定义拓扑「设备引用」节点：引用真实设备(host_id),右上角状态点实时联动。
 	import { Handle, Position, type NodeProps } from '@xyflow/svelte';
-	import { iconSvg } from './icons';
+	import Icon from '@iconify/svelte';
+	import { iconName } from './icons';
 
 	let { data }: NodeProps = $props();
 
@@ -13,19 +14,22 @@
 </script>
 
 <div class="device-node">
-	<Handle type="target" position={Position.Top} />
+	<!-- 四边连接桩：Loose 连接模式下每边可作起点/终点 -->
+	<Handle id="t" type="source" position={Position.Top} />
+	<Handle id="r" type="source" position={Position.Right} />
+	<Handle id="b" type="source" position={Position.Bottom} />
+	<Handle id="l" type="source" position={Position.Left} />
 	<span
 		class="status"
 		class:online={up === true}
 		class:offline={up === false}
 		class:unknown={up === undefined}
 	></span>
-	<div class="icon">{@html iconSvg(icon)}</div>
+	<div class="icon"><Icon icon={iconName(icon)} /></div>
 	<div class="text">
 		<div class="label">{label}</div>
 		{#if sub}<div class="sub">{sub}</div>{/if}
 	</div>
-	<Handle type="source" position={Position.Bottom} />
 </div>
 
 <style>
@@ -36,8 +40,8 @@
 		gap: 8px;
 		padding: 8px 12px 8px 10px;
 		min-width: 96px;
-		background: #fff;
-		border: 1.5px solid #cbd5e1;
+		background: var(--color-topology-node-bg);
+		border: 1.5px solid var(--color-border);
 		border-radius: 12px;
 		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 	}
@@ -67,7 +71,7 @@
 	.label {
 		font-size: 12px;
 		font-weight: 600;
-		color: #1e293b;
+		color: var(--color-text-primary);
 		max-width: 140px;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -75,6 +79,6 @@
 	}
 	.sub {
 		font-size: 10px;
-		color: #64748b;
+		color: var(--color-text-tertiary);
 	}
 </style>

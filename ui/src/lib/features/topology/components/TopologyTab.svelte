@@ -87,7 +87,6 @@
 		topology_takeSnapshot
 	} from '$lib/paraglide/messages';
 	import { useConfigQuery } from '$lib/shared/stores/config-query';
-	import { isEmbed } from '$lib/shared/utils/embed';
 
 	let { isReadOnly = false, isActive = false }: TabProps = $props();
 
@@ -418,10 +417,10 @@
 				if (urlParams.view) {
 					// urlParams.view 已由 getTopologyParamsFromUrl 过滤为合法后端视图(L2/L3)。
 					applyView(urlParams.view);
-				} else if (isEmbed) {
-					applyView(DEVICE_SCREEN_VIEW); // 嵌入默认 = 设备互联图
+				} else {
+					// 无 ?view= → 默认「设备互联图」(嵌入与非嵌入一致)
+					applyView(DEVICE_SCREEN_VIEW);
 				}
-				// 非嵌入且无 ?view= → 不动,保持原 L3Logical 默认
 			}
 			isFirstHydration = false;
 		}
@@ -548,17 +547,35 @@
 	let customViews = $state<{ id: string; name: string }[]>([]);
 
 	// hosts → 画布可搜索的设备列表(无实时状态字段 → up 留空,灰点)。
-	let devices = $derived<DeviceItem[]>(
-		(topologyDataQuery.data?.hosts ?? []).map((h) => ({
-			id: h.id,
-			name: h.sys_name || h.name || h.hostname || h.id,
-			type: h.model || h.manufacturer || '',
-			icon: 'server'
-		}))
-	);
+	let devices = $derived.by<DeviceItem[]>(() => {
+		const hosts = topologyDataQuery.data?.hosts ?? [];
+		// ip_addresses 是独立数组(带 host_id),建 host → 首个 IP 映射,做无名设备的兜底显示。
+		const ipByHost = new Map<string, string>();
+		for (const ip of topologyDataQuery.data?.ip_addresses ?? []) {
+			if (ip.ip_address && !ipByHost.has(ip.host_id)) ipByHost.set(ip.host_id, ip.ip_address);
+		}
+		return hosts.map((h) => {
+			const ip = ipByHost.get(h.id);
+			return {
+				id: h.id,
+				// 名称回退:sys_name → name → hostname → IP → id(避免直接显示 UUID)
+				name: h.sys_name || h.name || h.hostname || ip || h.id,
+				type: h.model || h.manufacturer || '',
+				ip,
+				icon: 'server'
+			};
+		});
+	});
 
 	// 左列「默认视图」= 现有视图切换项(去掉 icon,只留 value/label)。
-	let leftBuiltinViews = $derived(viewOptions.map((o) => ({ value: o.value, label: o.label })));
+	let leftBuiltinViews = $derived(
+		viewOptions.map((o) => ({
+			value: o.value,
+			label: o.label,
+			icon: o.icon,
+			iconColor: o.iconColor
+		}))
+	);
 
 	// 左列当前选中态:自定义模式高亮自定义项,否则高亮内置视图。
 	let leftSelection = $derived<Selection>(
@@ -720,7 +737,9 @@
 		<PreDaemonEmptyState title="Install a daemon to start mapping your network topology." />
 	{:else}
 		<div class="space-y-3">
-			<!-- Header -->
+			<!-- Header:工具栏控件恒隐藏(SHOW_TOOLBAR_CONTROLS=false)+ 视图切换已下沉左列,
+			     整条标题栏不再渲染,去掉那条空白色条。需要工具栏时(置 true)才显示。 -->
+			{#if SHOW_TOOLBAR_CONTROLS}
 			<div
 				class="card card-static flex items-center gap-2 px-2 py-2 {SHOW_TOOLBAR_CONTROLS
 					? 'justify-evenly'
@@ -836,6 +855,7 @@
 					<!-- 视图切换器已下沉到左侧分类列表(LeftViewList),此处保留标题栏颜色指示条。 -->
 				{/if}
 			</div>
+			{/if}
 
 			{#if $showViewSwitcherHint && viewSwitcherEl}
 				<ViewSwitcherHint anchor={viewSwitcherEl} />
@@ -856,7 +876,7 @@
 					/>
 					<div class="relative min-w-0 flex-1" id="topology-view-area">
 						{#if customMode && selectedCustomId}
-							<div class="h-[calc(100vh-120px)] w-full">
+							<div class="h-[calc(100vh-52px)] w-full">
 								<CustomTopologyView
 									networkId={$selectedNetworkId ?? ''}
 									{devices}
