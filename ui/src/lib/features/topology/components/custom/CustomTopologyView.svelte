@@ -1,27 +1,42 @@
 <script lang="ts">
 	// 自定义拓扑容器：接后端 CRUD 的 save/load，渲染画布。
 	// devices 由父组件从 hosts/topology 数据映射注入（保持画布解耦）。
-	import { onMount } from 'svelte';
 	import CustomTopologyCanvas from './CustomTopologyCanvas.svelte';
 	import { customTopologyApi, type CustomTopology } from './custom-api';
 	import type { DeviceItem, CustomGraphPayload } from './types';
 
-	let { networkId, devices = [] }: { networkId: string; devices?: DeviceItem[] } = $props();
+	let {
+		networkId,
+		devices = [],
+		topologyId
+	}: { networkId: string; devices?: DeviceItem[]; topologyId?: string } = $props();
 
 	let current = $state<CustomTopology | null>(null);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let saving = $state(false);
 
-	onMount(async () => {
+	// topologyId 指定时加载该视图;否则退化为「取第一个/新建」(独立预览用)。
+	async function load(id: string | undefined): Promise<void> {
+		loading = true;
+		error = null;
 		try {
-			const list = await customTopologyApi.list();
-			current = list[0] ?? (await customTopologyApi.create(networkId, '自定义拓扑'));
+			if (id) {
+				current = await customTopologyApi.get(id);
+			} else {
+				const list = await customTopologyApi.list();
+				current = list[0] ?? (await customTopologyApi.create(networkId, '自定义拓扑'));
+			}
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 		} finally {
 			loading = false;
 		}
+	}
+
+	// topologyId 变化(左列切换不同自定义视图)时重新加载。
+	$effect(() => {
+		load(topologyId);
 	});
 
 	async function handleSave(graph: CustomGraphPayload): Promise<void> {

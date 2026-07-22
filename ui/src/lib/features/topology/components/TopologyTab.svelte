@@ -5,6 +5,10 @@
 	import TopologyViewer from './visualization/TopologyViewer.svelte';
 	import DeviceScreenViewer from './visualization/DeviceScreenViewer.svelte';
 	import TopologyOptionsPanel from './panel/TopologyOptionsPanel.svelte';
+	import LeftViewList, { type Selection } from './custom/LeftViewList.svelte';
+	import CustomTopologyView from './custom/CustomTopologyView.svelte';
+	import { customTopologyApi } from './custom/custom-api';
+	import type { DeviceItem } from './custom/types';
 	import { Camera, Radar, Share2, Trash2 } from 'lucide-svelte';
 	import ExportButton from './ExportButton.svelte';
 	import ExportModal from './ExportModal.svelte';
@@ -538,6 +542,75 @@
 		showViewSwitcherHint.set(false);
 	}
 
+	// ── 自定义拓扑视图(左列「自定义视图」分类)───────────────────────────
+	let customMode = $state(false);
+	let selectedCustomId = $state<string | null>(null);
+	let customViews = $state<{ id: string; name: string }[]>([]);
+
+	// hosts → 画布可搜索的设备列表(无实时状态字段 → up 留空,灰点)。
+	let devices = $derived<DeviceItem[]>(
+		(topologyDataQuery.data?.hosts ?? []).map((h) => ({
+			id: h.id,
+			name: h.sys_name || h.name || h.hostname || h.id,
+			type: h.model || h.manufacturer || '',
+			icon: 'server'
+		}))
+	);
+
+	// 左列「默认视图」= 现有视图切换项(去掉 icon,只留 value/label)。
+	let leftBuiltinViews = $derived(viewOptions.map((o) => ({ value: o.value, label: o.label })));
+
+	// 左列当前选中态:自定义模式高亮自定义项,否则高亮内置视图。
+	let leftSelection = $derived<Selection>(
+		customMode && selectedCustomId
+			? { kind: 'custom', id: selectedCustomId }
+			: { kind: 'builtin', value: deviceScreenMode ? DEVICE_SCREEN_VIEW : $activeView }
+	);
+
+	async function loadCustomViews() {
+		try {
+			const list = await customTopologyApi.list();
+			customViews = list.map((t) => ({ id: t.id, name: t.name }));
+		} catch {
+			customViews = [];
+		}
+	}
+	onMount(loadCustomViews);
+
+	function selectBuiltinView(value: string) {
+		customMode = false;
+		selectedCustomId = null;
+		handleViewChange(value);
+	}
+	function selectCustomView(id: string) {
+		customMode = true;
+		selectedCustomId = id;
+		clearSelection();
+	}
+	async function createCustomView() {
+		const nid = $selectedNetworkId;
+		if (!nid) return;
+		try {
+			const t = await customTopologyApi.create(nid, '自定义拓扑');
+			await loadCustomViews();
+			selectCustomView(t.id);
+		} catch {
+			/* 忽略,保持当前视图 */
+		}
+	}
+	async function deleteCustomView(id: string) {
+		try {
+			await customTopologyApi.remove(id);
+			if (selectedCustomId === id) {
+				customMode = false;
+				selectedCustomId = null;
+			}
+			await loadCustomViews();
+		} catch {
+			/* 忽略 */
+		}
+	}
+
 	// Tutorial / hint state
 	let viewSwitcherEl: HTMLDivElement | undefined = $state();
 	let tutorialTypeToggled = $state(false);
@@ -760,16 +833,7 @@
 
 					{/if}
 
-					<div bind:this={viewSwitcherEl}>
-						<RichSelect
-							label=""
-							selectedValue={deviceScreenMode ? DEVICE_SCREEN_VIEW : $activeView}
-							displayComponent={SimpleOptionDisplay}
-							onSelect={handleViewChange}
-							options={viewOptions}
-							minWidth="22rem"
-						/>
-					</div>
+					<!-- 视图切换器已下沉到左侧分类列表(LeftViewList),此处保留标题栏颜色指示条。 -->
 				{/if}
 			</div>
 
@@ -780,53 +844,74 @@
 			{#if isLoading}
 				<Loading />
 			{:else if currentTopology}
-				<div class="relative" id="topology-view-area">
-					<TopologyOptionsPanel
-						topology={currentTopology}
-						tutorialTopology={$showDependencyTutorial ? TUTORIAL_TOPOLOGY : undefined}
-						{isReadOnly}
-						onClearSelection={$showDependencyTutorial
-							? dismissDependencyTutorial
-							: clearMultiSelect}
-						onGroupCreated={() => {
-							clearMultiSelect();
-							updateTopologyOptions((opts) => ({
-								...opts,
-								local: {
-									...opts.local,
-									hide_edge_types: opts.local.hide_edge_types.filter(
-										(e) => e !== 'RequestPath' && e !== 'HubAndSpoke'
-									)
-								}
-							}));
-						}}
-						onDependencyTypeChange={$showDependencyTutorial
-							? () => (tutorialTypeToggled = true)
-							: undefined}
+				<div class="flex items-stretch gap-0">
+					<LeftViewList
+						builtinViews={leftBuiltinViews}
+						{customViews}
+						selected={leftSelection}
+						onSelectBuiltin={selectBuiltinView}
+						onSelectCustom={selectCustomView}
+						onCreate={createCustomView}
+						onDelete={deleteCustomView}
 					/>
-					{#if deviceScreenMode}
-						<DeviceScreenViewer topology={currentTopology} />
-					{:else}
-						<TopologyViewer bind:this={topologyViewer} topology={currentTopology} {isActive} />
-					{/if}
-					{#if $showDependencyTutorial}
-						<DependencyTutorial
-							onDismiss={dismissDependencyTutorial}
-							dependencyTypeToggled={tutorialTypeToggled}
-						/>
-					{/if}
-					{#if showAppWizard}
-						<ApplicationSetupWizard
-							{appTags}
-							networkId={currentTopology.network_id}
-							onComplete={handleWizardComplete}
-						/>
-					{/if}
-					{#if showL2EmptyState}
-						<L2EmptyStateOverlay
-							hasSnmpCredential={onboarding.includes('FirstSnmpCredentialCreated')}
-						/>
-					{/if}
+					<div class="relative min-w-0 flex-1" id="topology-view-area">
+						{#if customMode && selectedCustomId}
+							<div class="h-[calc(100vh-120px)] w-full">
+								<CustomTopologyView
+									networkId={$selectedNetworkId ?? ''}
+									{devices}
+									topologyId={selectedCustomId}
+								/>
+							</div>
+						{:else}
+							<TopologyOptionsPanel
+								topology={currentTopology}
+								tutorialTopology={$showDependencyTutorial ? TUTORIAL_TOPOLOGY : undefined}
+								{isReadOnly}
+								onClearSelection={$showDependencyTutorial
+									? dismissDependencyTutorial
+									: clearMultiSelect}
+								onGroupCreated={() => {
+									clearMultiSelect();
+									updateTopologyOptions((opts) => ({
+										...opts,
+										local: {
+											...opts.local,
+											hide_edge_types: opts.local.hide_edge_types.filter(
+												(e) => e !== 'RequestPath' && e !== 'HubAndSpoke'
+											)
+										}
+									}));
+								}}
+								onDependencyTypeChange={$showDependencyTutorial
+									? () => (tutorialTypeToggled = true)
+									: undefined}
+							/>
+							{#if deviceScreenMode}
+								<DeviceScreenViewer topology={currentTopology} />
+							{:else}
+								<TopologyViewer bind:this={topologyViewer} topology={currentTopology} {isActive} />
+							{/if}
+							{#if $showDependencyTutorial}
+								<DependencyTutorial
+									onDismiss={dismissDependencyTutorial}
+									dependencyTypeToggled={tutorialTypeToggled}
+								/>
+							{/if}
+							{#if showAppWizard}
+								<ApplicationSetupWizard
+									{appTags}
+									networkId={currentTopology.network_id}
+									onComplete={handleWizardComplete}
+								/>
+							{/if}
+							{#if showL2EmptyState}
+								<L2EmptyStateOverlay
+									hasSnmpCredential={onboarding.includes('FirstSnmpCredentialCreated')}
+								/>
+							{/if}
+						{/if}
+					</div>
 				</div>
 			{:else}
 				<div class="card card-static text-secondary">
