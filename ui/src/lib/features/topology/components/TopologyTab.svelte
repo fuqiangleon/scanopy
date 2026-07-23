@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Loading from '$lib/shared/components/feedback/Loading.svelte';
+	import { pushError } from '$lib/shared/stores/feedback';
 	import PreDaemonEmptyState from '$lib/shared/components/layout/PreDaemonEmptyState.svelte';
 	import { hasDaemon } from '$lib/shared/onboarding/checklist';
 	import TopologyViewer from './visualization/TopologyViewer.svelte';
@@ -588,8 +589,9 @@
 		try {
 			const list = await customTopologyApi.list();
 			customViews = list.map((t) => ({ id: t.id, name: t.name }));
-		} catch {
+		} catch (e) {
 			customViews = [];
+			pushError('加载自定义拓扑列表失败:' + (e instanceof Error ? e.message : String(e)));
 		}
 	}
 	onMount(loadCustomViews);
@@ -606,13 +608,20 @@
 	}
 	async function createCustomView() {
 		const nid = $selectedNetworkId;
-		if (!nid) return;
+		if (!nid) {
+			pushError('未选择网络,无法创建自定义拓扑');
+			return;
+		}
 		try {
 			const t = await customTopologyApi.create(nid, '自定义拓扑');
+			if (!t?.id) {
+				pushError('创建自定义拓扑:响应缺少 id,返回=' + JSON.stringify(t));
+				return;
+			}
 			await loadCustomViews();
 			selectCustomView(t.id);
-		} catch {
-			/* 忽略,保持当前视图 */
+		} catch (e) {
+			pushError('创建自定义拓扑失败:' + (e instanceof Error ? e.message : String(e)));
 		}
 	}
 	async function deleteCustomView(id: string) {
